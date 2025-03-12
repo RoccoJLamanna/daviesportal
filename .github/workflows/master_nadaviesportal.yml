@@ -1,4 +1,4 @@
-name: Build and deploy Vite app to Azure Web App
+name: Build and deploy Node.js app to Azure Web App - nadaviesportal
  
 on:
   push:
@@ -18,46 +18,49 @@ jobs:
       - name: Set up Node.js version
         uses: actions/setup-node@v3
         with:
-          node-version: '20.x'
+          node-version: '22.x'
  
-      - name: npm install and build
+      - name: npm install, build, and test
         run: |
           npm install
-          npm run build
+          npm run build --if-present
+          npm run test --if-present
  
       - name: Prepare deployment package
         run: |
-          # Create a deployment directory with just the dist contents
-          mkdir deployment
+          # Create deployment directory with just dist contents
+          mkdir -p deployment
           cp -r dist/* deployment/
-          # Add a web.config file for proper routing
+          
+          # Add web.config for SPA routing in Azure
           echo '<?xml version="1.0" encoding="utf-8"?>
-            <configuration>
-              <system.webServer>
-                <rewrite>
-                  <rules>
-                    <rule name="SPA Routes" stopProcessing="true">
-                      <match url=".*" />
-                        <conditions logicalGrouping="MatchAll">
-                          <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
-                            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
-                            </conditions>
-                            <action type="Rewrite" url="/" />
-                          </rule>
-                        </rules>
-                      </rewrite>
-                    <staticContent>
-                  <mimeMap fileExtension=".webmanifest" mimeType="application/manifest+json" />
-                </staticContent>
-              </system.webServer>
-            </configuration>' > deployment/web.config
-      - name: Zip deployment package
+          <configuration>
+            <system.webServer>
+              <rewrite>
+                <rules>
+                  <rule name="SPA Routes" stopProcessing="true">
+                    <match url=".*" />
+                    <conditions logicalGrouping="MatchAll">
+                      <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+                      <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+                    </conditions>
+                    <action type="Rewrite" url="/" />
+                  </rule>
+                </rules>
+              </rewrite>
+              <staticContent>
+                <mimeMap fileExtension=".webmanifest" mimeType="application/manifest+json" />
+              </staticContent>
+            </system.webServer>
+          </configuration>' > deployment/web.config
+ 
+      - name: Zip artifact for deployment
         run: cd deployment && zip -r ../release.zip ./*
  
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
-          name: vite-app
+          name: node-app
           path: release.zip
  
   deploy:
@@ -66,14 +69,25 @@ jobs:
     environment:
       name: 'Production'
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+    permissions:
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
+ 
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
-          name: vite-app
+          name: node-app
  
       - name: Unzip artifact for deployment
         run: unzip release.zip -d deployment
+      
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_C24AD94F6C07499E8859287A9BEF335B }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7E81C685276E4CFAAB5CEA5BE67CD301 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_BAF603802EB94003ABFADF1BDE6AD518 }}
  
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
@@ -82,4 +96,3 @@ jobs:
           app-name: 'nadaviesportal'
           slot-name: 'Production'
           package: ./deployment
-          publish-profile: ${{ secrets.AzureAppService_PublishProfile_aae083634e2d48a0b73d8ead6a7f7012 }}
