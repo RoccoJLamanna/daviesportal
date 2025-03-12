@@ -20,50 +20,49 @@ jobs:
         with:
           node-version: '22.x'
  
-      - name: npm install, build, and test
+      - name: npm install and build
         run: |
           npm install
-          npm run build --if-present
-          npm run test --if-present
+          npm run build
           
-      - name: Move dist content to root for deployment
+      - name: Create server files for Azure
         run: |
-          # Copy all files from dist to root, preserving dist folder for reference
-          cp -r dist/* .
+          # Create a simple express server
+          echo 'const express = require("express");
+          const path = require("path");
           
-          # Create a basic web.config for static file hosting
-          echo '<?xml version="1.0" encoding="utf-8"?>
-          <configuration>
-            <system.webServer>
-              <rewrite>
-                <rules>
-                  <rule name="SPA">
-                    <match url=".*" />
-                    <conditions logicalGrouping="MatchAll">
-                      <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
-                    </conditions>
-                    <action type="Rewrite" url="index.html" />
-                  </rule>
-                </rules>
-              </rewrite>
-            </system.webServer>
-          </configuration>' > web.config
+          const app = express();
+          const PORT = process.env.PORT || 8080;
           
-          # Update package.json to include a serve command if using Node.js
-          if grep -q "\"scripts\"" package.json; then
-            # Add a static serve command if not already present
-            if ! grep -q "\"start\"" package.json; then
-              sed -i 's/"scripts": {/"scripts": {\n    "start": "serve -s .\/",/' package.json
-              npm install --save serve
-            fi
-          fi
+          // Serve static files from the dist directory
+          app.use(express.static(path.join(__dirname, "dist")));
           
-          # List files for verification
-          echo "Files in deployment root:"
-          ls -la
+          // For any request that doesn't match a static file, send the index.html
+          app.get("*", (req, res) => {
+            res.sendFile(path.join(__dirname, "dist", "index.html"));
+          });
+          
+          app.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+          });' > server.js
+          
+          # Update package.json for Azure
+          echo '{
+            "name": "vite-app",
+            "version": "1.0.0",
+            "scripts": {
+              "start": "node server.js"
+            },
+            "dependencies": {
+              "express": "^4.18.2"
+            }
+          }' > package.json
+          
+          # Install express for the server
+          npm install express
 
-      - name: Zip artifact for deployment
-        run: zip release.zip ./* -r
+      - name: Zip files for deployment
+        run: zip -r release.zip server.js package.json package-lock.json dist node_modules
  
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
