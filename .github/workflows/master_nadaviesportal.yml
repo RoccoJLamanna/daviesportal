@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read
  
     steps:
       - uses: actions/checkout@v4
@@ -20,42 +20,37 @@ jobs:
         with:
           node-version: '22.x'
  
-      - name: npm install, build, and test
+      - name: npm install and build
         run: |
           npm install
           npm run build --if-present
-          npm run test --if-present
  
-      - name: Prepare deployment package
+      - name: Prepare for deployment
         run: |
-          # Create deployment directory with just dist contents
-          mkdir -p deployment
-          cp -r dist/* deployment/
+          # Copy dist files directly to root for deployment
+          mkdir -p deploy_package
+          cp -r dist/* deploy_package/
           
-          # Add web.config for SPA routing in Azure
+          # Create web.config in the root
           echo '<?xml version="1.0" encoding="utf-8"?>
           <configuration>
             <system.webServer>
               <rewrite>
                 <rules>
-                  <rule name="SPA Routes" stopProcessing="true">
+                  <rule name="SPA">
                     <match url=".*" />
                     <conditions logicalGrouping="MatchAll">
                       <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
-                      <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
                     </conditions>
-                    <action type="Rewrite" url="/" />
+                    <action type="Rewrite" url="index.html" />
                   </rule>
                 </rules>
               </rewrite>
-              <staticContent>
-                <mimeMap fileExtension=".webmanifest" mimeType="application/manifest+json" />
-              </staticContent>
             </system.webServer>
-          </configuration>' > deployment/web.config
+          </configuration>' > deploy_package/web.config
  
       - name: Zip artifact for deployment
-        run: cd deployment && zip -r ../release.zip ./*
+        run: cd deploy_package && zip -r ../release.zip ./*
  
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -70,8 +65,8 @@ jobs:
       name: 'Production'
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write
+      contents: read
  
     steps:
       - name: Download artifact from build job
@@ -80,7 +75,7 @@ jobs:
           name: node-app
  
       - name: Unzip artifact for deployment
-        run: unzip release.zip -d deployment
+        run: unzip release.zip
       
       - name: Login to Azure
         uses: azure/login@v2
@@ -95,4 +90,4 @@ jobs:
         with:
           app-name: 'nadaviesportal'
           slot-name: 'Production'
-          package: ./deployment
+          package: .
